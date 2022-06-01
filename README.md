@@ -12,6 +12,6 @@ Project_2_rawcounts.csv: The raw counts data contains the number of reads for th
 
 Project_2_metadata.csv: The metadata contains the information about the sample groups and the conditions for the study that I am conducting. This is used in conjunction with the raw counts data to study differential expression in genes based on the sample groups and conditions indicated by the metadata. This csv was sourced from another study (https://github.com/JoannaGriffiths/Coral-population-responses-to-acidification), but it was simplified to only include one population instead of two populations that were used in this original study.
 
-Project_2C.rmd: This is an R markdown file of the code used to perform all the bioinformatics analyses in the study.
+Project_2C.rmd: This is an R markdown file of the code used to perform all the bioinformatics analyses in the study. All the code is contained in the chunks on R and has comments that explain each line of code.
 
-Project_2C_draft.html: This is a knitted html of the R notebook which contains all the code to perform all the bioinformatics analyses in the study as well as all the resulting outputs of the code. 
+Project_2C_draft.html: This is a knitted html file of the R notebook which contains all the code to perform all the bioinformatics analyses in the study as well as all the resulting outputs of the code.
