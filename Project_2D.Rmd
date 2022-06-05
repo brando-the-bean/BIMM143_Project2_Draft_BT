@@ -1,0 +1,231 @@
+---
+title: "Project 2"
+author: "Brandon Tsai"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Introduction
+### Scientific Question
+Are the 3 most upregulated genes in the coral Balanophyllia elegans in an acidic ocean condition specific to the biological processes that corals undergo (e.g. calcification and skeletal matrix formation), or are they associated with broad biological processes that are shared among other organisms?
+
+### Background
+The coral Balanophyllia elegans, commonly called the orange cup coral, is a round coral with tentacles that looks similar to a sea anemone. It primarily lives in rocky intertidal shores along the west coast of North America, ranging from Alaska to Baja California. As is typical for corals, this species has a skeletal matrix made out of calcium carbonate. because of its calcium carbonate skeleton, this coral is susceptible to the effects of ocean acidification, as a lower pH will reduce the ability of the coral to build its skeleton. Specifically, a lower pH in the ocean reduces the abundance of carbonate ions in the water, which the coral needs to produce calcium carbonate and form its skeleton. If the coral is unable to take in enough carbonate ions to undergo normal skeletal growth, then it will erode and essentially die. As ocean acidification is continuously worsening over time, skeleton-building corals like Balanophyllia elegans face a great threat if they are not able to adapt and become resilient against these environmental pressures. Thus, studying how this coral responds to acidifying conditions by altering the expression of genes, and ultimately producing certain proteins to confer greater resilience, is important to understanding the potential for this coral to withstand these stressful conditions. However, it is unclear whether the changes in expression in response to acidification occur in genes that are specific to the biological processes that corals undergo, such as calcification or skeletal matrix formation, or if the changes in expression mainly occur in genes that influence broad cellular or physiological processes that many other organisms undergo as well.
+
+Sources: 
+
+https://www.centralcoastbiodiversity.org/orange-cup-coral-bull-balanophyllia-elegans.html
+
+https://usa.oceana.org/effects-ocean-acidification-corals/
+
+
+### Hypothesis
+If the most highly expressed genes in the coral Balanophyllia elegans in acidic ocean conditions are associated with calcification or skeletal matrix formation which are specific to corals, then these corals would undergo specialized changes in response to ocean acidification rather than changing broad cellular or physiological processes that are shared among many other organisms.
+
+
+### Analysis and data for the study
+The first step of analysis is to perform differential gene expression analysis to examine how genes are differentially expressed in the coral between a low acidity and a high acidity condition. For this analysis, the read counts obtained from RNA Seq and the metadata were retrieved from https://github.com/JoannaGriffiths/Coral-population-responses-to-acidification. This dataset was used for the Griffiths et al. 2019 study "Differential responses to ocean acidification between populations of Balanophyllia elegans corals from high and low upwelling environments". However, the dataset that I am using is simplified and only includes data from one population instead of two populations that were used in the original study. A heatmap and PCA will be used to visualize patterns of gene expression in both low and high acidity conditions. From the results of the differential expression analysis, the top 3 genes that are most upregulated in corals in a highly acidic condition will be selected for the next step of the analysis. A gene ontology (GO) analysis will be performed for each of these three genes to identify the products or functions associated with these genes. Afterward, a BLAST search on the genes obtained from NCBI (the code will be executed in R) will be performed to further investigate other homologous sequences and to infer whether these respective genes are present only in corals or in other organisms as well.
+
+
+# Loading in packages
+Here is the code to load in each of the packages, 
+```{r}
+#load pheatmap package. The pheatmap package is used to generate a heatmap, which visualizes the results of the differential gene expression analysis by comparing correlations in gene expression among each sample
+library(pheatmap)
+
+#load RColorBrewer package. This package provides different color schemes when making certain graphs such as heatmaps. For this study, a heatmap will be made and RColorBrewer is able to specify the colors for this heatmap.
+library(RColorBrewer)
+
+#load tidyverse package. The tidyverse package includes several useful packages with many functions that are meant to make coding on R a lot more efficient and organized. Specifically, the tidyverse package allows me to use the %>% characters to turn my code into a pipeline
+library(tidyverse)
+
+#The code below is used to install packages from BioConductor but it is put inside comments because it takes a long time to install the packages when I knit the code. These are here in case you need to install them
+
+#if (!require("BiocManager", quietly = TRUE))
+    #install.packages("BiocManager")
+#BiocManager::install("DESeq2")
+#BiocManager::install("org.Hs.eg.db")
+#BiocManager::install("GO.db")
+#BiocManager::install("limma")
+
+#load packages from BioConductor
+
+#load DESeq2 package. The DESeq2 package is used to perform the differential gene expression analysis and involves functions such as DESeqDataSetFromMatrix and DESeq.
+library(DESeq2)
+
+#load org.Hs.eg.db, GO.db, and limma packages. These three packages are grouped together because they are involved in the gene ontology (GO) analysis. The org.Hs.eg.db and Go.db packages provide access to the online databases (specifically the GO database) that are required for the GO analysis so that I can access these databases directly from R. The limma package is required for the "goana" function which performs the GO analysis on R -- it allows me to input the genes that I want to perform the GO analysis on and outputs a table of the results
+library(org.Hs.eg.db)
+library(GO.db)
+library(limma)
+
+#load annotate package. The annotate package is required to perform the BLAST search on R. It is a useful package to perform gene annotations, which are a large component of the BLAST search.
+library(annotate)
+```
+
+
+# Bioinformatics Analysis
+
+## Bioinformatics Method 1: DESeq Analysis
+DESeq analysis stands for differential expression analysis. It looks at the read counts of genes whose transcripts have been sequenced (such as through RNA Seq) and analyzes these counts to see which genes are expressed differently under different conditions. DESeq analysis also quantifies the magnitude by which a gene is differentially expressed and how statistically significant this change in expression is among different conditions. DESeq analysis requires data from the raw counts of the gene transcripts that were sequenced (in this case I will import the raw counts as a csv file) as well as the metadata which contains information about each of the sample groups and the conditions/treatments for each sample group that pertain to the raw counts.
+```{r}
+#read in the data of raw counts of the genes in the coral obtained from RNA Seq from https://github.com/JoannaGriffiths/Coral-population-responses-to-acidification. This is a global variable.
+rawcounts <- read.csv("project_2_rawcounts.csv")
+#view the first few rows of the raw counts
+head(rawcounts)
+
+#read in the metadata that is associated with the raw counts -- the metadata contains treatments of low or high acidity. Also obtained from https://github.com/JoannaGriffiths/Coral-population-responses-to-acidification. This is a global variable.
+metadata <- read.csv("project_2_metadata.csv")
+#view the first few rows of the metadata
+head(metadata)
+
+#Check if rows in metadata are in the same order as columns in raw counts data
+all(rownames(metadata)==colnames(rawcounts))
+#rownames in metadata were not in the same order as columns in the raw counts data, so we have to clean and reorder the rows and columns
+
+#set the first column in the metadata containing the labels for each treatment as the rownames
+rownames(metadata) <- metadata[,1]
+
+#set the first column in the rawcounts containing the gene labels as the rownames
+rownames(rawcounts) <- rawcounts[,1]
+
+#remove the original first column in the rawcounts because this column has become the rownames and is now redundant
+rawcounts <- rawcounts[,2:13]
+
+#Check again if the rows in metadata are in the same order as columns in raw counts data
+all(rownames(metadata)==colnames(rawcounts))
+
+#this function returned "TRUE" which means that rownames in metadata and colnames in rawcounts are in the same order. I can proceed with the DESeq analysis
+```
+
+
+```{r}
+#obtain the DESeq object using the DESeqDataSetFromMatrix function, save it to the variable "dds"
+dds <- DESeqDataSetFromMatrix(countData = round(rawcounts),
+                              colData = metadata,
+                              design = ~ condition)
+
+#run the DESeq function on the DESeq object, save the results to the variable seqRNA
+seqRNA <- DESeq(dds)
+
+#test for differences in expression for different conditions using the results function, specify alpha = 0.1, save to the variable "results"
+results <- results(seqRNA, alpha = 0.1)
+
+#summary of results to see how many genes are up- or down-regulated at p = 0.1
+summary(results)
+```
+
+# Plotting the results
+
+## Visualization Method 1: Heatmap
+The heatmap is a type of plot that shows bars of colors which represent a range or gradient of numbers. The heatmap can be used to visualize different types of data, but in this study I will be using a heatmap to visualize the correlations of differentially expressed genes among all the coral samples. The hierarchical heatmap adds an additional layer of data by making clusters of the different samples involved in the study based on the way that they are correlated with each other. Thus, I can use this hierarchical heatmap to visualize the correlations among each sample and also check whether the samples in this study are clearly grouped together by the condition (in this case, high vs. low acidity). The heatmap code uses data from the pairwise correlations in log-transformed gene expression among the sample groups.
+```{r}
+#create hierarchical heatmap
+
+#normalize the read counts by estimating size factors, save to the variable "dds"
+dds <- estimateSizeFactors(dds)
+sizeFactors(dds)
+
+#perform log transformation of the size factors to scale the gene expression levels more easily, save to the variable "vsd"
+vsd <- vst(dds, blind = TRUE)
+
+#extract vst matrix from the object, save to the variable "vsd_mat"
+vsd_mat <- assay(vsd)
+#get pairwise correlations of log2fold change in gene expression among all samples, save to the variable "vsd_cor"
+vsd_cor <- cor(vsd_mat)
+#plot the heatmap of these correlations to investigate patterns in gene expression among the samples in this study
+pheatmap(vsd_cor, annotation = dplyr::select(metadata, condition))
+```
+
+```{r}
+#there seem to be no visible patterns of clustering in gene expression between low and high acidity conditions. I will double check my results from the heatmap by visualizing the vsd variable in a PCA to see if there might be any patterns
+```
+
+## Visualization method 2: PCA plot
+The PCA plot shows a scatter plot of the first two principal components together, in an attempt to reduce the dimensionality in the study and make sense of the way that the samples in the study cluster together based on the many dimensions of variation that exist within the study. In this case, I am plotting a PCA of the log2fold changes in gene expression among all my samples to view how the variation in these changes is structured with regard to the samples and the condition (high vs. low acidity). This helps me to visualize how my samples cluster (or don't cluster) and if there is any pattern in the data. This is a great complement to the heatmap to validate the patterns of clustering that are seen in the heatmap.
+```{r}
+#plot a scatterplot of PCA1 vs PCA2 of the log2 transformed size factors (gene expression levels) among each sample, color the dots by high vs. low acidity condition
+
+plotPCA(vsd, intgroup = "condition")
+```
+```{r}
+#From the PCA it also looks like there are no clustering patterns between high and low acidity, however I will still look at the genes that are upregulated in this study and continue my analysis with these genes
+```
+
+
+## Bioinformatics Method 2: GO Analysis
+The GO (gene ontology) analysis looks up the genes of interest from the GO database to retrieve information about the genes, the proteins and gene products that are associated with these genes, and most importantly the functions that are related to these genes. For this study, the genes that were found to be upregulated from the previous steps of analysis will be searched up on the GO database and their associated functions can be identified.
+```{r}
+#get dataframe of the DESeq results that had p values less than 0.1, save to the variable "results_all"
+results_all <- data.frame(results) %>% mutate(threshold = padj < 0.1)
+
+#reorder the matrix of results from largest to smallest log2fold change so I can see which genes are the most upregulated, save to the variable "results_all_reordered"
+results_all_reordered <- results_all %>% 
+ arrange(desc(results_all$log2FoldChange))
+  
+#look at the first few rows in the reordered results to see the top 3 genes that are most highly expressed in
+head(results_all_reordered)
+```
+
+```{r}
+#I retrieved the gene IDs from the corresponding gene ID sheet included in the study that I got the raw counts from: https://github.com/JoannaGriffiths/Coral-population-responses-to-acidification. The gene ID sheet is a list of the labels for each gene that was included in the raw counts data and the corresponding gene IDs for the GO database. These gene IDs are what I will use to search up the genes in the GO analysis
+
+#36194: GO:0006520
+#36519: GO:0005525
+#17690: GO:0007034
+
+#GO analysis
+
+#create a variable (vector) of the gene IDs of the top three upregulated genes from my previous analysis, save as "go_genes"
+go_genes<-c("GO:0006520","GO:0005525","GO:0007034")
+
+#the goana function will search up the gene IDs on the GO database. Save these results in the variable "go_analysis"
+go_analysis <- goana(go_genes)
+
+#subset the results from the GO analysis to only include the top three upregulated genes, save this subset to the variable "top3_genes"
+top3_genes <- go_analysis[c("GO:0006520", "GO:0005525", "GO:0007034"),]
+
+#show the table of the results of my GO analysis for the top 3 genes that I found from differential expression analysis
+top3_genes
+```
+
+```{r}
+#I also researched these results from the GO analysis on the GO database website to find the actual gene names
+
+#GO:0006520 led me to the tub1 gene
+#GO:0005525 led me to the protein-coding gene for tryptophan aminotransferase-related protein 3
+#GO:0007034 led me to the CHMP6 gene
+```
+
+# Bioinformatics Method 3: BLAST search
+The BLAST search looks up the genes or nucleotide sequences of interest from the NCBI database and then returns a list of other genes or sequences from the database that are found to be homologous (similar in sequence and alignment) to these input genes/sequences. The resulting list of genes also contains information about the organisms in which these genes are found, the E value, and the % identity among many other parameters. Generally, it is useful for finding similar or even identical sequences to the gene or sequence of interest. The BLAST search can use a gene sequence (such as a FASTA file) or the gene ID as the input. Here I chose to use the gene ID from NCBI as the input.
+```{r}
+#Perform BLAST searches on the genes that I found from the GO analysis. I will be taking the gene IDs for each of these genes from the NCBI database to perform the BLAST searches
+
+#BLAST search for the gene with the ID GO:0005525. I searched up this ID on the GO database and found the gene tubg1. I searched up this gene on the NCBI database and retrieved the gene ID 393882 from NCBI to use in the BLAST search
+blastSequences(393882, timeout = 1000, hitListSize="15", as=c("data.frame"))
+```
+
+
+```{r}
+#BLAST search for the gene with the ID GO:0006520. I searched up this ID on the GO database and found the protein-coding gene for tryptophan aminotransferase-related protein 3. I searched up this gene on the NCBI database and retrieved the gene ID 4325589 from NCBI to use in the BLAST search
+blastSequences(4325589, timeout = 1000, hitListSize="15", as=c("data.frame"))
+```
+
+
+```{r}
+#BLAST search for the protein associated with GO:0007034. I searched up this gene ID on the GO database and found the gene CHMP6. I searched up this gene on the NCBI database and retrieved the gene ID 287873 from NCBI to use in the BLAST search
+blastSequences(287873, timeout = 1000, hitListSize="15", as=c("data.frame"))
+```
+
+
+# Analyzing the Results
+Overall, I did find a good number of genes that were highly expressed in corals exposed to high ocean acidity and were statistically significant in their expression (p < 0.1). However, from the heatmap and PCA results, there seemed to be no clustering patterns at all between the corals in high vs. low acidity environments. This is surprising given that PC1 accounted for 44% of the total variance in the data set and PC2 accounted for another 20% of variance, suggesting that the variation should be likely explained by the parameters of this study (e.g. high and low acidity). However, these results show that the expression of genes is not clearly differentiated between corals in high acidity environments and corals in low acidity environments, and that the acidity condition does not explain these differences in gene expression very much.
+
+Regardless of this, I still performed the GO analysis on the top 3 upregulated genes, which are the genes that have the highest positive log2fold change. From the GO analysis, I found that these generally influence the functions related to cellular amino acid metabolic processes, GTP binding, and vacuolar transport. All three of these functions seem to be related to broad cellular processes rather than specific processes that might be directly involved in calcification or skeletal matrix formation in corals. The BLAST searches on these three genes also produced consistent results with the GO analyses, as these searches returned homologous sequences that were found in other organisms such as homo sapiens (humans), Legionella pneumophila (bacterium), and many others. This indicates that the upregulated genes in the coral that I studied are indeed more general in the functions that they influence and that these genes are similar to those found in other organisms. However, one limitation that may have risen from this study is that there may only be a low number of corals whose annotated genes are recorded in the NCBI database in comparison with the large number of other organisms with much more data available, especially highly studied organisms like humans, mice, and prokaryotes. This may have skewed the results of my BLAST search, since the BLAST search pulls from the available data that is present in the NCBI database and would result in a relatively large number of hits from these more commonly studied organisms.
+
+From all of these results, it seems that my hypothesis is not supported. The top 3 upregulated genes in the coral in response to high ocean acidity do not directly associate with the specialized biological processes (e.g. calcification or formation of the skeletal matrix) in corals, but rather these genes seem to broadly influence the cellular processes that many organisms undergo. Also, as mentioned before, the differentially expressed genes seem to not be associated with the low acidity and high acidity conditions that the corals were exposed to.
+
+
+
+
